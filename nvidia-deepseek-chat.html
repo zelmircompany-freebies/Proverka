@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#08090c">
+<title>NVIDIA DeepSeek Chat</title>
+<style>
+:root{
+  --bg:#08090c;--panel:#0d0f14;--panel2:#11141b;--line:#20242d;
+  --text:#f3f5f8;--muted:#858d9b;--accent:#76b900;--accent2:#9ee01c;
+  --danger:#ff5d67;--user:#181d25;--assistant:#0e1218;
+  --shadow:0 18px 60px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{overflow:hidden}
+button,input,textarea{font:inherit}
+button{border:0}
+.app{height:100dvh;display:flex;flex-direction:column;max-width:1100px;margin:auto;background:var(--bg)}
+.topbar{
+  height:68px;min-height:68px;border-bottom:1px solid var(--line);display:flex;align-items:center;
+  justify-content:space-between;padding:0 18px;gap:12px;background:rgba(8,9,12,.92);backdrop-filter:blur(18px);z-index:5
+}
+.brand{display:flex;align-items:center;gap:11px;min-width:0}
+.logo{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,#8bd400,#5b9000);display:grid;place-items:center;box-shadow:0 0 24px rgba(118,185,0,.22)}
+.logo svg{width:22px;height:22px;fill:#081000}
+.brand-text{min-width:0}
+.brand-title{font-size:15px;font-weight:750;letter-spacing:.1px}
+.brand-sub{font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.actions{display:flex;gap:7px}
+.icon-btn,.small-btn{
+  background:var(--panel2);color:#cfd4dc;border:1px solid var(--line);border-radius:10px;
+  cursor:pointer;transition:.18s;padding:9px 11px
+}
+.icon-btn:hover,.small-btn:hover{border-color:#343b47;background:#171b23;color:#fff}
+.icon-btn{width:40px;height:40px;display:grid;place-items:center;padding:0}
+.icon-btn svg{width:18px;height:18px}
+.status{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted)}
+.dot{width:7px;height:7px;border-radius:50%;background:#666}
+.dot.ok{background:var(--accent);box-shadow:0 0 9px rgba(118,185,0,.7)}
+.dot.bad{background:var(--danger)}
+.chat{flex:1;overflow-y:auto;scroll-behavior:smooth}
+.messages{max-width:850px;margin:auto;padding:34px 18px 150px}
+.welcome{min-height:58vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:40px 12px}
+.welcome-mark{width:68px;height:68px;border-radius:21px;background:linear-gradient(135deg,#83cf00,#426b00);display:grid;place-items:center;margin-bottom:20px;box-shadow:0 20px 50px rgba(118,185,0,.16)}
+.welcome-mark svg{width:38px;height:38px;fill:#091000}
+h1{font-size:29px;line-height:1.15;margin:0 0 10px;letter-spacing:-.7px}
+.welcome p{max-width:550px;color:var(--muted);font-size:14px;line-height:1.65;margin:0}
+.chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:25px}
+.chip{background:#0f1218;border:1px solid var(--line);color:#b8bec8;border-radius:999px;padding:9px 13px;font-size:12px;cursor:pointer}
+.chip:hover{border-color:#3a414d;color:#fff}
+.message{display:flex;gap:12px;margin:0 auto 25px;max-width:790px}
+.message.user{justify-content:flex-end}
+.avatar{width:30px;height:30px;min-width:30px;border-radius:10px;display:grid;place-items:center;margin-top:2px;background:#151922;color:#aeb5c0}
+.message.assistant .avatar{background:rgba(118,185,0,.13);color:var(--accent)}
+.avatar svg{width:16px;height:16px;fill:currentColor}
+.bubble{max-width:calc(100% - 44px);font-size:14px;line-height:1.65;word-break:break-word}
+.user .bubble{background:var(--user);border:1px solid #252b35;border-radius:18px 18px 5px 18px;padding:11px 14px}
+.assistant .bubble{padding:2px 0}
+.bubble pre{overflow:auto;background:#080a0e;border:1px solid var(--line);padding:12px;border-radius:11px;margin:10px 0;font-size:12px}
+.bubble code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.bubble p{margin:0 0 10px}.bubble p:last-child{margin-bottom:0}
+.bubble ul,.bubble ol{padding-left:22px}
+.bubble img{max-width:100%;max-height:340px;border-radius:12px;display:block;margin-bottom:9px}
+.typing{display:flex;gap:4px;padding:7px 0}.typing span{width:5px;height:5px;background:#78808d;border-radius:50%;animation:b 1s infinite}.typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
+@keyframes b{50%{transform:translateY(-4px);opacity:.45}}
+.composer-wrap{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(transparent,var(--bg) 25%);padding:25px 14px calc(14px + env(safe-area-inset-bottom));z-index:4}
+.composer{max-width:850px;margin:auto;background:#10131a;border:1px solid #292e38;border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
+.preview{display:none;padding:10px 12px 0}.preview.show{display:flex}.preview-card{position:relative}.preview img{width:72px;height:72px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}.remove-img{position:absolute;right:-7px;top:-7px;width:21px;height:21px;border-radius:50%;background:#242932;color:#fff;cursor:pointer}
+textarea{display:block;width:100%;resize:none;min-height:50px;max-height:150px;background:transparent;border:0;outline:0;color:var(--text);padding:15px 15px 7px;font-size:14px;line-height:1.45}
+textarea::placeholder{color:#69717e}
+.composer-bottom{display:flex;align-items:center;justify-content:space-between;padding:5px 8px 8px 10px}
+.left-tools,.right-tools{display:flex;align-items:center;gap:5px}
+.tool{height:34px;min-width:34px;padding:0 9px;border-radius:9px;background:transparent;color:#858e9c;cursor:pointer}
+.tool:hover{background:#1a1e27;color:#e8ebef}.tool svg{width:17px;height:17px;vertical-align:middle}
+.send{width:36px;height:36px;border-radius:11px;background:var(--accent);color:#0a1000;display:grid;place-items:center;cursor:pointer;transition:.18s}
+.send:hover{background:var(--accent2);transform:translateY(-1px)}.send:disabled{opacity:.35;cursor:not-allowed;transform:none}
+.hint{font-size:10px;color:#5f6773;margin-left:6px}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(7px);display:none;align-items:flex-end;justify-content:center;z-index:20;padding:12px}
+.overlay.open{display:flex}
+.modal{width:min(500px,100%);background:#10131a;border:1px solid #292e38;border-radius:20px;padding:20px;box-shadow:var(--shadow);margin-bottom:max(0px,env(safe-area-inset-bottom))}
+.modal h2{font-size:18px;margin:0 0 5px}.modal p{font-size:12px;color:var(--muted);line-height:1.55;margin:0 0 17px}
+.field{margin-bottom:13px}.field label{display:block;font-size:11px;color:#9aa2af;margin-bottom:6px}
+.field input{width:100%;height:42px;background:#0b0e13;border:1px solid #292e38;border-radius:10px;color:#fff;padding:0 12px;outline:none}
+.field input:focus{border-color:#5d8e17}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:17px}
+.primary,.secondary{padding:10px 14px;border-radius:10px;cursor:pointer}.primary{background:var(--accent);color:#081000;font-weight:700}.secondary{background:#1a1e27;color:#d5d9df;border:1px solid #292e38}
+.key-note{font-size:10px;color:#69717e;margin-top:8px}
+.toast{position:fixed;top:78px;left:50%;transform:translateX(-50%) translateY(-10px);background:#191d25;border:1px solid #303642;color:#fff;padding:9px 13px;border-radius:10px;font-size:12px;opacity:0;pointer-events:none;transition:.2s;z-index:30}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media(max-width:600px){
+  .topbar{padding:0 12px;height:62px;min-height:62px}.brand-title{font-size:14px}.brand-sub{font-size:10px}
+  .logo{width:34px;height:34px}.actions .status{display:none}
+  .messages{padding:24px 13px 145px}.welcome{min-height:55vh;padding:20px 5px}.welcome-mark{width:58px;height:58px;border-radius:18px}.welcome-mark svg{width:32px;height:32px}
+  h1{font-size:24px}.welcome p{font-size:13px}.chips{gap:6px}.chip{font-size:11px;padding:8px 10px}
+  .message{gap:8px;margin-bottom:20px}.avatar{width:27px;height:27px;min-width:27px;border-radius:9px}.bubble{font-size:13px;max-width:calc(100% - 35px)}
+  .composer-wrap{padding-left:9px;padding-right:9px}.composer{border-radius:16px}.hint{display:none}
+  textarea{font-size:14px;min-height:47px}.tool{padding:0 8px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo"><svg viewBox="0 0 24 24"><path d="M3 5h18v14H3V5Zm2 2v10h14V7H5Zm2 2h10v6H7V9Z"/></svg></div>
+      <div class="brand-text">
+        <div class="brand-title">NVIDIA DeepSeek Chat</div>
+        <div class="brand-sub">deepseek-ai/deepseek-v4.1-flash</div>
+      </div>
+    </div>
+    <div class="actions">
+      <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">Ключ не задан</span></div>
+      <button class="icon-btn" id="settingsBtn" title="API ключ">⚙</button>
+      <button class="icon-btn" id="clearBtn" title="Новый чат">＋</button>
+    </div>
+  </header>
+
+  <main class="chat" id="chat">
+    <div class="messages" id="messages">
+      <section class="welcome" id="welcome">
+        <div class="welcome-mark"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4V4Zm3 3v10h10V7H7Zm2 2h6v2H9V9Zm0 4h6v2H9v-2Z"/></svg></div>
+        <h1>Чем займёмся?</h1>
+        <p>Чат на базе NVIDIA API и DeepSeek. Введи свой API-ключ через ⚙ и начни общение.</p>
+        <div class="chips">
+          <button class="chip">Объясни сложную тему</button>
+          <button class="chip">Напиши код</button>
+          <button class="chip">Помоги с текстом</button>
+          <button class="chip">Проанализируй идею</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div class="composer-wrap">
+    <div class="composer">
+      <div class="preview" id="preview">
+        <div class="preview-card"><img id="previewImg"><button class="remove-img" id="removeImg">×</button></div>
+      </div>
+      <textarea id="input" rows="1" placeholder="Напиши сообщение..."></textarea>
+      <div class="composer-bottom">
+        <div class="left-tools">
+          <button class="tool" id="imageBtn" title="Добавить изображение">⌕</button>
+          <input id="fileInput" type="file" accept="image/*" hidden>
+          <span class="hint">Enter — отправить · Shift+Enter — новая строка</span>
+        </div>
+        <div class="right-tools"><button class="send" id="sendBtn" title="Отправить">➤</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2>API ключ NVIDIA</h2>
+    <p>Ключ вводится прямо здесь и не записан в этот HTML-файл. Для этой локальной версии он используется браузером при запросах к NVIDIA API.</p>
+    <div class="field">
+      <label>NVIDIA API Key</label>
+      <input id="keyInput" type="password" autocomplete="off" placeholder="nvapi-...">
+      <div class="key-note">Для удобства ключ сохраняется только в sessionStorage текущей вкладки.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="secondary" id="cancelKey">Отмена</button>
+      <button class="primary" id="saveKey">Сохранить</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const API_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
+const MODEL = "deepseek-ai/deepseek-v4.1-flash";
+const DEFAULTS = {temperature:1, top_p:0.95, max_tokens:4096};
+
+let apiKey = sessionStorage.getItem("nvidia_api_key") || "";
+let history = [];
+let selectedImage = null;
+let busy = false;
+
+const $ = id => document.getElementById(id);
+const messagesEl = $("messages"), input = $("input"), sendBtn = $("sendBtn");
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
+}
+function formatText(s){
+  let x=escapeHtml(s);
+  x=x.replace(/```([\s\S]*?)```/g,(_,c)=>`<pre><code>${c.trim()}</code></pre>`);
+  x=x.replace(/`([^`]+)`/g,"<code>$1</code>");
+  x=x.replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>");
+  x=x.replace(/\n/g,"<br>");
+  return x;
+}
+function toast(t){
+  const el=$("toast");el.textContent=t;el.classList.add("show");
+  clearTimeout(window.__toast);window.__toast=setTimeout(()=>el.classList.remove("show"),2200);
+}
+function updateStatus(){
+  $("statusDot").className="dot "+(apiKey?"ok":"");
+  $("statusText").textContent=apiKey?"Ключ подключён":"Ключ не задан";
+}
+function scrollBottom(){requestAnimationFrame(()=>{$("chat").scrollTop=$("chat").scrollHeight})}
+
+function addMessage(role, text, image){
+  if($("welcome")) $("welcome").remove();
+  const wrap=document.createElement("div");wrap.className=`message ${role}`;
+  const avatar=document.createElement("div");avatar.className="avatar";
+  avatar.innerHTML=role==="user"?"U":"✦";
+  const bubble=document.createElement("div");bubble.className="bubble";
+  if(image){const im=document.createElement("img");im.src=image;im.alt="Изображение";bubble.appendChild(im)}
+  const txt=document.createElement("div");txt.innerHTML=formatText(text||"");bubble.appendChild(txt);
+  if(role==="user"){wrap.appendChild(bubble);wrap.appendChild(avatar)} else {wrap.appendChild(avatar);wrap.appendChild(bubble)}
+  messagesEl.appendChild(wrap);scrollBottom();
+  return bubble;
+}
+function addTyping(){
+  if($("typing")) return;
+  const wrap=document.createElement("div");wrap.className="message assistant";wrap.id="typing";
+  wrap.innerHTML='<div class="avatar">✦</div><div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>';
+  messagesEl.appendChild(wrap);scrollBottom();
+}
+function removeTyping(){const t=$("typing");if(t)t.remove()}
+
+function setComposer(v){input.value=v;input.dispatchEvent(new Event("input"));input.focus()}
+document.querySelectorAll(".chip").forEach(c=>c.onclick=()=>setComposer(c.textContent));
+
+$("settingsBtn").onclick=()=>{
+  $("keyInput").value=apiKey;$("overlay").classList.add("open");setTimeout(()=>$("keyInput").focus(),80)
+};
+$("cancelKey").onclick=()=>$("overlay").classList.remove("open");
+$("overlay").addEventListener("click",e=>{if(e.target===$("overlay"))$("overlay").classList.remove("open")});
+$("saveKey").onclick=()=>{
+  const k=$("keyInput").value.trim();
+  if(!k){toast("Введи API-ключ");return}
+  apiKey=k;sessionStorage.setItem("nvidia_api_key",k);updateStatus();$("overlay").classList.remove("open");toast("Ключ сохранён в текущей вкладке")
+};
+$("clearBtn").onclick=()=>{
+  history=[];messagesEl.innerHTML=`<section class="welcome" id="welcome"><div class="welcome-mark"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4V4Zm3 3v10h10V7H7Zm2 2h6v2H9V9Zm0 4h6v2H9v-2Z"/></svg></div><h1>Новый чат</h1><p>Готово. Напиши сообщение, чтобы начать новый диалог.</p></section>`;
+  selectedImage=null;$("preview").classList.remove("show");input.value="";toast("Новый чат")
+};
+
+$("imageBtn").onclick=()=>$("fileInput").click();
+$("fileInput").onchange=e=>{
+  const file=e.target.files[0];if(!file)return;
+  if(file.size>8*1024*1024){toast("Изображение должно быть меньше 8 МБ");return}
+  const reader=new FileReader();reader.onload=()=>{selectedImage=reader.result;$("previewImg").src=selectedImage;$("preview").classList.add("show")};reader.readAsDataURL(file)
+};
+$("removeImg").onclick=()=>{selectedImage=null;$("preview").classList.remove("show");$("fileInput").value=""};
+
+input.addEventListener("input",()=>{input.style.height="auto";input.style.height=Math.min(input.scrollHeight,150)+"px"});
+input.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});
+sendBtn.onclick=send;
+
+async function send(){
+  if(busy)return;
+  const text=input.value.trim();
+  if(!text && !selectedImage)return;
+  if(!apiKey){$("settingsBtn").click();toast("Сначала введи NVIDIA API-ключ");return}
+  busy=true;sendBtn.disabled=true;
+
+  const userContent=[];
+  if(text) userContent.push({type:"text",text});
+  if(selectedImage) userContent.push({type:"image_url",image_url:{url:selectedImage}});
+  const apiContent=userContent.length===1 && userContent[0].type==="text" ? text : userContent;
+
+  addMessage("user",text,selectedImage);
+  history.push({role:"user",content:apiContent});
+  input.value="";input.style.height="auto";selectedImage=null;$("preview").classList.remove("show");$("fileInput").value="";
+  addTyping();
+
+  try{
+    const res=await fetch(API_URL,{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":`Bearer ${apiKey}`},
+      body:JSON.stringify({model:MODEL,messages:history,temperature:DEFAULTS.temperature,top_p:DEFAULTS.top_p,max_tokens:DEFAULTS.max_tokens,stream:false})
+    });
+    const data=await res.json();
+    removeTyping();
+    if(!res.ok){
+      const msg=data?.error?.message || data?.message || `HTTP ${res.status}`;
+      addMessage("assistant",`Не удалось получить ответ.\n\nОшибка NVIDIA API: ${msg}`);
+      history.pop();
+      return;
+    }
+    const answer=data?.choices?.[0]?.message?.content ?? "Пустой ответ от модели.";
+    history.push({role:"assistant",content:answer});
+    addMessage("assistant",answer);
+  }catch(err){
+    removeTyping();
+    addMessage("assistant",`Не удалось подключиться к NVIDIA API.\n\n${err.message}\n\nЕсли это ошибка CORS, браузер блокирует прямой запрос из локального HTML — тогда понадобится небольшой локальный прокси.`);
+    history.pop();
+  }finally{
+    busy=false;sendBtn.disabled=false;input.focus();
+  }
+}
+updateStatus();
+</script>
+</body>
+</html>
