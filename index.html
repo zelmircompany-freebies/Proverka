@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#08090c">
-<title>NVIDIA DeepSeek Chat</title>
+<title>NVIDIA Kimi Chat</title>
+<script src="https://cdn.jsdelivr.net/npm/axios@1.7.7/dist/axios.min.js"></script>
 <style>
 :root{
   --bg:#08090c;--panel:#0d0f14;--panel2:#11141b;--line:#20242d;
@@ -63,6 +64,11 @@ h1{font-size:29px;line-height:1.15;margin:0 0 10px;letter-spacing:-.7px}
 .bubble p{margin:0 0 10px}.bubble p:last-child{margin-bottom:0}
 .bubble ul,.bubble ol{padding-left:22px}
 .bubble img{max-width:100%;max-height:340px;border-radius:12px;display:block;margin-bottom:9px}
+.reasoning{
+  border-left:2px solid #2f3844;padding:6px 10px;margin:0 0 10px;color:#8f97a4;
+  font-size:12px;line-height:1.55;white-space:pre-wrap;background:#0b0e13;border-radius:0 8px 8px 0
+}
+.reasoning-label{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#5f6773;margin-bottom:4px}
 .typing{display:flex;gap:4px;padding:7px 0}.typing span{width:5px;height:5px;background:#78808d;border-radius:50%;animation:b 1s infinite}.typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
 @keyframes b{50%{transform:translateY(-4px);opacity:.45}}
 .composer-wrap{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(transparent,var(--bg) 25%);padding:25px 14px calc(14px + env(safe-area-inset-bottom));z-index:4}
@@ -106,8 +112,8 @@ textarea::placeholder{color:#69717e}
     <div class="brand">
       <div class="logo"><svg viewBox="0 0 24 24"><path d="M3 5h18v14H3V5Zm2 2v10h14V7H5Zm2 2h10v6H7V9Z"/></svg></div>
       <div class="brand-text">
-        <div class="brand-title">NVIDIA DeepSeek Chat</div>
-        <div class="brand-sub">deepseek-ai/deepseek-v4.1-flash</div>
+        <div class="brand-title">NVIDIA Kimi Chat</div>
+        <div class="brand-sub">moonshotai/kimi-k3 · streaming</div>
       </div>
     </div>
     <div class="actions">
@@ -122,7 +128,7 @@ textarea::placeholder{color:#69717e}
       <section class="welcome" id="welcome">
         <div class="welcome-mark"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4V4Zm3 3v10h10V7H7Zm2 2h6v2H9V9Zm0 4h6v2H9v-2Z"/></svg></div>
         <h1>Чем займёмся?</h1>
-        <p>Чат на базе NVIDIA API и DeepSeek. Введи свой API-ключ через ⚙ и начни общение.</p>
+        <p>Чат на базе NVIDIA API и Kimi K3 со стримингом ответов. Введи свой API-ключ через ⚙ и начни общение.</p>
         <div class="chips">
           <button class="chip">Объясни сложную тему</button>
           <button class="chip">Напиши код</button>
@@ -170,13 +176,21 @@ textarea::placeholder{color:#69717e}
 
 <script>
 const API_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
-const MODEL = "deepseek-ai/deepseek-v4.1-flash";
-const DEFAULTS = {temperature:1, top_p:0.95, max_tokens:4096};
+const MODEL = "moonshotai/kimi-k3";
+const STREAM = true;
+const DEFAULTS = {
+  temperature: 1,
+  top_p: 0.95,
+  max_tokens: 16384,
+  seed: 0,
+  reasoning_effort: "max"
+};
 
 let apiKey = sessionStorage.getItem("nvidia_api_key") || "";
 let history = [];
 let selectedImage = null;
 let busy = false;
+let activeController = null;
 
 const $ = id => document.getElementById(id);
 const messagesEl = $("messages"), input = $("input"), sendBtn = $("sendBtn");
@@ -214,16 +228,29 @@ function addMessage(role, text, image){
   messagesEl.appendChild(wrap);scrollBottom();
   return bubble;
 }
-function addTyping(){
-  if($("typing")) return;
-  const wrap=document.createElement("div");wrap.className="message assistant";wrap.id="typing";
-  wrap.innerHTML='<div class="avatar">✦</div><div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>';
-  messagesEl.appendChild(wrap);scrollBottom();
-}
-function removeTyping(){const t=$("typing");if(t)t.remove()}
 
-function setComposer(v){input.value=v;input.dispatchEvent(new Event("input"));input.focus()}
-document.querySelectorAll(".chip").forEach(c=>c.onclick=()=>setComposer(c.textContent));
+function addStreamingAssistant(){
+  if($("welcome")) $("welcome").remove();
+  const wrap=document.createElement("div");wrap.className="message assistant";wrap.id="streaming";
+  const avatar=document.createElement("div");avatar.className="avatar";avatar.textContent="✦";
+  const bubble=document.createElement("div");bubble.className="bubble";
+  const reasoning=document.createElement("div");reasoning.className="reasoning";reasoning.style.display="none";
+  const reasoningLabel=document.createElement("div");reasoningLabel.className="reasoning-label";reasoningLabel.textContent="Размышления";
+  const reasoningText=document.createElement("div");
+  reasoning.appendChild(reasoningLabel);reasoning.appendChild(reasoningText);
+  const answer=document.createElement("div");
+  const typing=document.createElement("div");typing.className="typing";
+  typing.innerHTML="<span></span><span></span><span></span>";
+  bubble.appendChild(reasoning);bubble.appendChild(answer);bubble.appendChild(typing);
+  wrap.appendChild(avatar);wrap.appendChild(bubble);
+  messagesEl.appendChild(wrap);scrollBottom();
+  return {reasoning, reasoningText, answer, typing, bubble, wrap};
+}
+
+function finishStreaming(refs){
+  if(!refs) return;
+  if(refs.typing && refs.typing.parentNode) refs.typing.remove();
+}
 
 $("settingsBtn").onclick=()=>{
   $("keyInput").value=apiKey;$("overlay").classList.add("open");setTimeout(()=>$("keyInput").focus(),80)
@@ -235,10 +262,16 @@ $("saveKey").onclick=()=>{
   if(!k){toast("Введи API-ключ");return}
   apiKey=k;sessionStorage.setItem("nvidia_api_key",k);updateStatus();$("overlay").classList.remove("open");toast("Ключ сохранён в текущей вкладке")
 };
-$("clearBtn").onclick=()=>{
-  history=[];messagesEl.innerHTML=`<section class="welcome" id="welcome"><div class="welcome-mark"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4V4Zm3 3v10h10V7H7Zm2 2h6v2H9V9Zm0 4h6v2H9v-2Z"/></svg></div><h1>Новый чат</h1><p>Готово. Напиши сообщение, чтобы начать новый диалог.</p></section>`;
-  selectedImage=null;$("preview").classList.remove("show");input.value="";toast("Новый чат")
-};
+
+function resetChat(){
+  history=[];selectedImage=null;$("preview").classList.remove("show");input.value="";input.style.height="auto";
+  if(activeController){try{activeController.abort()}catch(e){}activeController=null}
+  messagesEl.innerHTML=`<section class="welcome" id="welcome"><div class="welcome-mark"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4V4Zm3 3v10h10V7H7Zm2 2h6v2H9V9Zm0 4h6v2H9v-2Z"/></svg></div><h1>Новый чат</h1><p>Готово. Напиши сообщение, чтобы начать новый диалог.</p></section>`;
+}
+$("clearBtn").onclick=()=>{resetChat();toast("Новый чат")};
+document.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{
+  input.value=c.textContent;input.dispatchEvent(new Event("input"));input.focus();
+});
 
 $("imageBtn").onclick=()=>$("fileInput").click();
 $("fileInput").onchange=e=>{
@@ -250,50 +283,181 @@ $("removeImg").onclick=()=>{selectedImage=null;$("preview").classList.remove("sh
 
 input.addEventListener("input",()=>{input.style.height="auto";input.style.height=Math.min(input.scrollHeight,150)+"px"});
 input.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});
-sendBtn.onclick=send;
+sendBtn.onclick=()=>send();
 
-async function send(){
-  if(busy)return;
-  const text=input.value.trim();
-  if(!text && !selectedImage)return;
-  if(!apiKey){$("settingsBtn").click();toast("Сначала введи NVIDIA API-ключ");return}
-  busy=true;sendBtn.disabled=true;
+/* ------- Разбор SSE-чанков ------- */
+function extractDelta(json){
+  const choice = json?.choices?.[0] || {};
+  const delta = choice.delta || choice.message || {};
+  const out = { content: "", reasoning: "" };
+  if(typeof delta.content === "string") out.content = delta.content;
+  else if(Array.isArray(delta.content)){
+    out.content = delta.content.map(p=>p?.text||"").join("");
+  }
+  if(typeof delta.reasoning_content === "string") out.reasoning = delta.reasoning_content;
+  else if(typeof choice.reasoning_content === "string") out.reasoning = choice.reasoning_content;
+  return out;
+}
 
-  const userContent=[];
-  if(text) userContent.push({type:"text",text});
-  if(selectedImage) userContent.push({type:"image_url",image_url:{url:selectedImage}});
-  const apiContent=userContent.length===1 && userContent[0].type==="text" ? text : userContent;
-
-  addMessage("user",text,selectedImage);
-  history.push({role:"user",content:apiContent});
-  input.value="";input.style.height="auto";selectedImage=null;$("preview").classList.remove("show");$("fileInput").value="";
-  addTyping();
-
-  try{
-    const res=await fetch(API_URL,{
-      method:"POST",
-      headers:{"Content-Type":"application/json","Authorization":`Bearer ${apiKey}`},
-      body:JSON.stringify({model:MODEL,messages:history,temperature:DEFAULTS.temperature,top_p:DEFAULTS.top_p,max_tokens:DEFAULTS.max_tokens,stream:false})
-    });
-    const data=await res.json();
-    removeTyping();
-    if(!res.ok){
-      const msg=data?.error?.message || data?.message || `HTTP ${res.status}`;
-      addMessage("assistant",`Не удалось получить ответ.\n\nОшибка NVIDIA API: ${msg}`);
-      history.pop();
-      return;
+function handleChunkText(bufferObj, text, refs, onDone){
+  bufferObj.buf += text;
+  let idx;
+  while((idx = bufferObj.buf.indexOf("\n\n")) !== -1){
+    const raw = bufferObj.buf.slice(0, idx);
+    bufferObj.buf = bufferObj.buf.slice(idx + 2);
+    const lines = raw.split(/\r?\n/);
+    for(const line of lines){
+      const t = line.trim();
+      if(!t || !t.startsWith("data:")) continue;
+      const data = t.slice(5).trim();
+      if(data === "[DONE]"){ onDone && onDone(); return; }
+      try{
+        const json = JSON.parse(data);
+        const { content, reasoning } = extractDelta(json);
+        if(reasoning){
+          refs.reasoning.style.display="";
+          refs.reasoningText.textContent += reasoning;
+        }
+        if(content){
+          refs.answer.dataset.raw = (refs.answer.dataset.raw||"") + content;
+          refs.answer.innerHTML = formatText(refs.answer.dataset.raw);
+        }
+        scrollBottom();
+      }catch(e){ /* неполный JSON — оставим в буфере, но на всякий случай пропустим */ }
     }
-    const answer=data?.choices?.[0]?.message?.content ?? "Пустой ответ от модели.";
-    history.push({role:"assistant",content:answer});
-    addMessage("assistant",answer);
-  }catch(err){
-    removeTyping();
-    addMessage("assistant",`Не удалось подключиться к NVIDIA API.\n\n${err.message}\n\nЕсли это ошибка CORS, браузер блокирует прямой запрос из локального HTML — тогда понадобится небольшой локальный прокси.`);
-    history.pop();
-  }finally{
-    busy=false;sendBtn.disabled=false;input.focus();
   }
 }
+
+async function send(){
+  if(busy) return;
+  const text = input.value.trim();
+  if(!text && !selectedImage) return;
+  if(!apiKey){$("settingsBtn").click();toast("Сначала введи NVIDIA API-ключ");return}
+
+  busy = true; sendBtn.disabled = true;
+
+  // Формируем содержимое пользователя
+  const userContent = [];
+  if(text) userContent.push({type:"text", text});
+  if(selectedImage) userContent.push({type:"image_url", image_url:{url:selectedImage}});
+  const apiContent = (userContent.length===1 && userContent[0].type==="text") ? text : userContent;
+
+  addMessage("user", text, selectedImage);
+  history.push({role:"user", content:apiContent});
+
+  input.value=""; input.style.height="auto"; selectedImage=null;
+  $("preview").classList.remove("show"); $("fileInput").value="";
+
+  const refs = addStreamingAssistant();
+
+  const payload = {
+    messages: history,
+    model: MODEL,
+    max_tokens: DEFAULTS.max_tokens,
+    seed: DEFAULTS.seed,
+    stream: STREAM,
+    temperature: DEFAULTS.temperature,
+    top_p: DEFAULTS.top_p,
+    reasoning_effort: DEFAULTS.reasoning_effort
+  };
+
+  const headers = {
+    "Authorization": `Bearer ${apiKey}`,
+    "Accept": STREAM ? "text/event-stream" : "application/json",
+    "Content-Type": "application/json"
+  };
+
+  const bufferObj = { buf: "" };
+  let done = false;
+
+  try{
+    activeController = new AbortController();
+    const response = await axios.post(API_URL, payload, {
+      headers,
+      responseType: STREAM ? "stream" : "json",
+      signal: activeController.signal,
+      // ВАЖНО: в браузере axios использует XHR, и responseType: 'stream' не поддерживается.
+      // Поэтому для браузера используем fetch-совместимый адаптер через onDownloadProgress.
+      onDownloadProgress: (e) => {
+        // Этот путь сработает, если axios в браузере использует XHR и отдаёт прогресс.
+        // Но для настоящего стрима надёжнее fetch — см. fetchStreaming ниже.
+      }
+    });
+    // Сюда попадём только если responseType действительно вернул stream (Node.js).
+    if(STREAM && response.data && typeof response.data.on === "function"){
+      await new Promise((resolve) => {
+        response.data.on("data", (chunk) => {
+          handleChunkText(bufferObj, chunk.toString(), refs, () => { done = true; });
+          if(done) resolve();
+        });
+        response.data.on("end", resolve);
+        response.data.on("error", resolve);
+      });
+    } else if(!STREAM){
+      const data = response.data;
+      const msg = data?.choices?.[0]?.message?.content || "Пустой ответ.";
+      refs.answer.dataset.raw = msg;
+      refs.answer.innerHTML = formatText(msg);
+    }
+  }catch(err){
+    // В браузере axios не умеет responseType:'stream' — фолбэк на fetch-стрим.
+    try{
+      await fetchStreaming(payload, headers, refs, bufferObj);
+    }catch(e2){
+      finishStreaming(refs);
+      const msg = e2?.message || err?.message || "Неизвестная ошибка";
+      refs.answer.innerHTML = formatText(`Не удалось получить ответ.\n\nОшибка: ${msg}\n\nЕсли это CORS — браузер блокирует прямой запрос к NVIDIA API из локального HTML. Понадобится локальный прокси.`);
+      history.pop();
+      busy=false; sendBtn.disabled=false; input.focus();
+      return;
+    }
+  }
+
+  finishStreaming(refs);
+  const finalText = refs.answer.dataset.raw || "";
+  if(finalText){
+    history.push({role:"assistant", content: finalText});
+  } else {
+    history.pop();
+  }
+  busy=false; sendBtn.disabled=false; input.focus();
+}
+
+/* ------- Настоящий браузерный стрим через fetch (fallback) ------- */
+async function fetchStreaming(payload, headers, refs, bufferObj){
+  activeController = new AbortController();
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: {...headers, "Accept": "text/event-stream"},
+    body: JSON.stringify(payload),
+    signal: activeController.signal
+  });
+  if(!res.ok){
+    let bodyText = "";
+    try{ bodyText = await res.text(); }catch(e){}
+    throw new Error(`HTTP ${res.status} ${bodyText.slice(0,300)}`);
+  }
+  if(!res.body){
+    // Если стрим недоступен — читаем как текст (SSE всё равно придёт целиком)
+    const text = await res.text();
+    handleChunkText(bufferObj, text, refs);
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let done = false;
+  while(!done){
+    const { value, done: d } = await reader.read();
+    done = d;
+    if(value){
+      const chunk = decoder.decode(value, {stream: true});
+      handleChunkText(bufferObj, chunk, refs, () => { done = true; });
+    }
+  }
+  // Финальный кусок
+  handleChunkText(bufferObj, decoder.decode(), refs);
+}
+
 updateStatus();
 </script>
 </body>
